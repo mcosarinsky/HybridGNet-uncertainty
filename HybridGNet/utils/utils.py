@@ -53,7 +53,9 @@ def scipy_to_torch_sparse(scp_matrix):
     v = torch.FloatTensor(values)
     shape = scp_matrix.shape
 
-    sparse_tensor = torch.sparse.FloatTensor(i, v, torch.Size(shape))
+    #sparse_tensor = torch.sparse.FloatTensor(i, v, torch.Size(shape))
+    sparse_tensor = torch.sparse_coo_tensor(i, v, torch.Size(shape), dtype=torch.float32)
+
     return sparse_tensor
 
 ## Adjacency Matrix

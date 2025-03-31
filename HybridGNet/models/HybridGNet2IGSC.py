@@ -104,6 +104,7 @@ class Hybrid(nn.Module):
         hw = config['inputsize'] // 32
         self.z = config['latents']
         self.encoder = EncoderConv(latents = self.z, hw = hw)
+        self.eval_sampling = config['eval_sampling']
         
         self.downsample_matrices = downsample_matrices
         self.upsample_matrices = upsample_matrices
@@ -159,7 +160,7 @@ class Hybrid(nn.Module):
     def forward(self, x):
         self.mu, self.log_var, conv6, conv5 = self.encoder(x)
 
-        if self.training:
+        if self.training or self.eval_sampling:
             z = self.sampling(self.mu, self.log_var)
         else:
             z = self.mu
@@ -198,3 +199,116 @@ class Hybrid(nn.Module):
         x = self.graphConv_up1(x, self.adjacency_matrices[0]._indices()) # Sin relu y sin bias
         
         return x, pos1, pos2
+    
+
+class HybridFast(nn.Module):
+    def __init__(self, config, downsample_matrices, upsample_matrices, adjacency_matrices):
+        super(HybridFast, self).__init__()
+        
+        self.config = config
+        hw = config['inputsize'] // 32
+        self.z = config['latents']
+        self.encoder = EncoderConv(latents = self.z, hw = hw)
+        self.eval_sampling = config['eval_sampling']
+        
+        self.downsample_matrices = downsample_matrices
+        self.upsample_matrices = upsample_matrices
+        self.adjacency_matrices = adjacency_matrices
+        self.kld_weight = 1e-5
+                
+        n_nodes = config['n_nodes']
+        self.filters = config['filters']
+        self.K = 6
+        self.window = (3,3)
+        
+        # Generate the fully connected layer for the decoder
+        outshape = self.filters[-1] * n_nodes[-1]          
+        self.dec_lin = torch.nn.Linear(self.z, outshape)
+                
+        self.normalization2u = torch.nn.InstanceNorm1d(self.filters[1])
+        self.normalization3u = torch.nn.InstanceNorm1d(self.filters[2])
+        self.normalization4u = torch.nn.InstanceNorm1d(self.filters[3])
+        self.normalization5u = torch.nn.InstanceNorm1d(self.filters[4])
+        self.normalization6u = torch.nn.InstanceNorm1d(self.filters[5])
+        
+        outsize1 = self.encoder.size[4]
+        outsize2 = self.encoder.size[4]  
+                     
+        # Store graph convolution layers
+        self.graphConv_up6 = ChebConv(self.filters[6], self.filters[5], self.K)
+        self.graphConv_up5 = ChebConv(self.filters[5], self.filters[4], self.K)       
+        
+        self.SC_1 = SkipBlock(self.filters[4], self.window)
+        
+        self.graphConv_up4 = ChebConv(self.filters[4] + outsize1 + 2, self.filters[3], self.K)        
+        self.graphConv_up3 = ChebConv(self.filters[3], self.filters[2], self.K)
+        
+        self.SC_2 = SkipBlock(self.filters[2], self.window)
+        
+        self.graphConv_up2 = ChebConv(self.filters[2] + outsize2 + 2, self.filters[1], self.K)
+        self.graphConv_up1 = ChebConv(self.filters[1], self.filters[0], 1, bias = False)
+                
+        self.pool = Pool()
+        
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        torch.nn.init.normal_(self.dec_lin.weight, 0, 0.1)
+
+    def sampling(self, mu, log_var):
+        std = torch.exp(0.5*log_var)
+        eps = torch.randn_like(std)
+        return eps.mul(std).add_(mu) 
+    
+    def encode(self, x):
+        """Encode the input and return latent representations and skip connections"""
+        mu, log_var, conv6, conv5 = self.encoder(x)
+        return mu, log_var, conv6, conv5
+    
+    def decode(self, z, conv6, conv5):
+        """Decode from latent space using skip connections"""
+        x = self.dec_lin(z)
+        x = F.relu(x)
+        
+        x = x.reshape(x.shape[0], -1, self.filters[-1])
+        
+        x = self.graphConv_up6(x, self.adjacency_matrices[5]._indices())
+        x = self.normalization6u(x)
+        x = F.relu(x)
+        
+        x = self.graphConv_up5(x, self.adjacency_matrices[4]._indices())
+        x = self.normalization5u(x)
+        x = F.relu(x)
+        
+        x, pos1 = self.SC_1(x, self.adjacency_matrices[3]._indices(), conv6)
+        
+        x = self.graphConv_up4(x, self.adjacency_matrices[3]._indices())
+        x = self.normalization4u(x)
+        x = F.relu(x)
+        
+        x = self.pool(x, self.upsample_matrices[0])
+        
+        x = self.graphConv_up3(x, self.adjacency_matrices[2]._indices())
+        x = self.normalization3u(x)
+        x = F.relu(x)
+        
+        x, pos2 = self.SC_2(x, self.adjacency_matrices[1]._indices(), conv5)
+        
+        x = self.graphConv_up2(x, self.adjacency_matrices[1]._indices())
+        x = self.normalization2u(x)
+        x = F.relu(x)
+        
+        x = self.graphConv_up1(x, self.adjacency_matrices[0]._indices()) # No relu and no bias
+        
+        return x, pos1, pos2
+        
+    def forward(self, x):
+        """Full forward pass (both encoding and decoding)"""
+        mu, log_var, conv6, conv5 = self.encode(x)
+        
+        if self.training or self.eval_sampling:
+            z = self.sampling(mu, log_var)
+        else:
+            z = mu
+            
+        return self.decode(z, conv6, conv5) + (mu, log_var)  # Return outputs and latent parameters

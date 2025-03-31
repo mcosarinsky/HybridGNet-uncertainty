@@ -32,7 +32,7 @@ def getDenseMask(RL, LL, H):
     return img
 
 if __name__ == "__main__":
-    device = "cuda:0"
+    device = "cpu" #"cuda:0"
 
     A, AD, D, U = genMatrixesLungsHeart()
     N1 = A.shape[0]
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     config['n_nodes'] = [N1, N1, N1, N2, N2, N2]
     A_ = [A.copy(), A.copy(), A.copy(), AD.copy(), AD.copy(), AD.copy()]
-    A_t, D_t, U_t = ([scipy_to_torch_sparse(x).to('cuda:0') for x in X] for X in (A_, D_, U_))
+    A_t, D_t, U_t = ([scipy_to_torch_sparse(x).to(device) for x in X] for X in (A_, D_, U_))
 
     config['latents'] = 64
     config['inputsize'] = 1024
@@ -58,13 +58,14 @@ if __name__ == "__main__":
     f = 32
     config['filters'] = [2, f, f, f, f//2, f//2, f//2]
     config['skip_features'] = f
+    config['eval_sampling'] = True
 
     hybrid = Hybrid(config.copy(), D_t, U_t, A_t).to(device)
-    hybrid.load_state_dict(torch.load("../Weights/SegmentationModel/bestMSE.pt"))
+    hybrid.load_state_dict(torch.load("../Weights/SegmentationModel/bestMSE.pt", map_location=device))
     hybrid.eval()
     print('Model loaded')
 
-    folder = '../Datasets/Padchest/Images'
+    folder = '../Datasets/Chestxray/Images'
     data_root = pathlib.Path(folder)
     all_files = list(data_root.glob('*.png'))
     all_files = [str(path) for path in all_files]
@@ -76,7 +77,7 @@ if __name__ == "__main__":
             print('\r',contador+1,'of', len(all_files),end='')
             
             image_name = all_files[contador].split('/')[-1]
-            image_path = os.path.join('../Datasets/Padchest/Output', image_name).replace('.png', '.txt')
+            image_path = os.path.join('../Datasets/Chestxray/Output', image_name).replace('.png', '.txt')
 
             img = cv2.imread(image, 0) / 255.0
   
