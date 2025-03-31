@@ -127,7 +127,7 @@ def plot_comparison(df_orig, img_orig, df_corr, img_corr, plot_fn, show_global_b
 
     return fig, (ax1, ax2)
 
-def plot_sigma_dict(sigma_dict, yscale='linear', grid=True):
+def plot_sigmas_mean(sigma_dict, yscale='linear', grid=True):
     """Plots sigma values for a given sigma dictionary."""
     n_images = len(sigma_dict)
     n_cols = 3
@@ -138,7 +138,7 @@ def plot_sigma_dict(sigma_dict, yscale='linear', grid=True):
 
     for i, (img_name, vals) in enumerate(sigma_dict.items()):
         ax = axes[i]
-        ax.scatter(vals['corr_levels'], vals['sigma_avgs'])
+        ax.scatter(vals['corr_levels'], np.array(vals['sigmas']).mean(axis=1))
         ax.set_title(f"{img_name[:20]}")
         ax.set_yscale(yscale)
         if grid: ax.grid(True, color='gray', linestyle='--', linewidth=0.5)

@@ -1,9 +1,10 @@
 import os
+import random
 import cv2
 import pandas as pd
 import numpy as np
 
-def load_image_and_samples(img_dir: str, output_dir: str, img_name: str) -> (pd.DataFrame, np.ndarray):
+def load_image_and_samples(img_dir: str, output_dir: str, img_name: str):
     """
     Load a grayscale image and extract landmark coordinates from all sample files.
 
@@ -71,3 +72,34 @@ def extract_landmarks(file_name: str, split: bool = True) -> dict:
         else:
             landmarks_dict[key] = None  
     return landmarks_dict
+
+def sample_landmarks(landmark_dict, organ, n_samples=1):
+    if landmark_dict.get(organ) is None:
+        return np.empty((0,2))
+    else:
+        landmarks = landmark_dict[organ]
+        n_samples = min(n_samples, len(landmarks))
+        
+        indices = np.random.choice(len(landmarks), n_samples, replace=False)
+
+        return landmarks[indices]
+    
+def sample_images(img_dir: str, num_samples: int = 15) -> list:
+    all_images = [f for f in os.listdir(img_dir) if f.endswith('.png')]
+    return random.sample(all_images, min(num_samples, len(all_images)))
+
+def process_images(img_dir: str, output_subdir: str, process_fn, severity_levels: list):
+    output_dir = os.path.join(img_dir, output_subdir)
+    os.makedirs(output_dir, exist_ok=True)
+    selected_images = sample_images(img_dir)
+    
+    for img_name in selected_images:
+        img_path = os.path.join(img_dir, img_name)
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        img_base, ext = os.path.splitext(img_name)
+        
+        for severity in severity_levels:
+            processed_img = process_fn(img, severity)
+            output_name = f"{img_base}_{severity}{ext}"
+            output_path = os.path.join(output_dir, output_name)
+            cv2.imwrite(output_path, processed_img)

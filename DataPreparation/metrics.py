@@ -61,13 +61,13 @@ def process_corr_images(img_dir_corr: str, output_dir_corr: str, selected_images
     Returns:
       dict: Dictionary mapping image names to sigma averages and corruption levels.
     """
-    sigma_dict = defaultdict(lambda: {"sigma_avgs": [], "corr_levels": []})
+    sigma_dict = defaultdict(lambda: {"sigmas": [], "corr_levels": []})
     for img_name in selected_images:
         img_prefix = img_name.replace('.png', '')
         corr_images = natsorted([f for f in os.listdir(img_dir_corr) if f.startswith(img_prefix)])
         for img_file in corr_images:
             sigma, corr_level = find_avg_std(img_dir_corr, output_dir_corr, img_file)
-            sigma_dict[img_name]["sigma_avgs"].append(sigma.mean())
+            sigma_dict[img_name]["sigmas"].append(sigma.values)
             sigma_dict[img_name]["corr_levels"].append(corr_level)
     return sigma_dict
 
@@ -81,14 +81,16 @@ def read_sigma_file(file_path: str) -> dict:
     sigma_dict = {}
     with open(file_path, 'r') as f:
         for line in f:
-            img_name, sigma_avg = line.strip().split()
-            sigma_avg = float(sigma_avg)
+            parts = line.strip().split()
+            img_name = parts[0]
+            sigmas = np.array(parts[1:], dtype=np.float32)
             corr_level = int(img_name.split('_')[-1].split('.')[0])
             base_img_name = '_'.join(img_name.split('_')[:-1]) + '.png'
+            
             if base_img_name not in sigma_dict:
                 sigma_dict[base_img_name] = {'corr_levels': [], 'sigma_avgs': []}
             sigma_dict[base_img_name]['corr_levels'].append(corr_level)
-            sigma_dict[base_img_name]['sigma_avgs'].append(sigma_avg)
+            sigma_dict[base_img_name]['sigmas'].append(sigmas)
     return sigma_dict
 
 def compute_global_vmax(df_original, df_corrupted):

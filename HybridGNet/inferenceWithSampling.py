@@ -32,7 +32,7 @@ def getDenseMask(RL, LL, H):
     return img
 
 
-def main(img_name, n_samples, folder_name=None):
+def main(img_name, n_samples, output_file, folder_name=None):
     """
     Process images to generate multiple samples per image efficiently by
     encoding once and decoding multiple times with different z values.
@@ -109,7 +109,7 @@ def main(img_name, n_samples, folder_name=None):
             # Encode only once - this is the key efficiency improvement
             mu, log_var, conv6, conv5 = hybrid.encode(data)
             log_var_np = log_var.cpu().numpy()
-            logs.append((image_name, np.exp(log_var_np).mean()))
+            logs.append((image_name, np.exp(log_var_np)))
             
             # Generate n_samples using the same encoding but different random z values
             for sample_id in range(n_samples):
@@ -134,10 +134,11 @@ def main(img_name, n_samples, folder_name=None):
                 
                 output_mask_path = output_sample_path.replace('.txt', '_mask.png').replace(output_folder, mask_folder)
                 #cv2.imwrite(output_mask_path, outseg)
-    
-    with open('../Datasets/Chestxray/output_sigma.txt', 'w') as f:
-        for image_name, log_var in logs:
-            f.write(f"{image_name} {log_var}\n")
+            
+    with open(f'../Datasets/Chestxray/{output_file}', 'w') as f:
+        for image_name, var in logs:
+            var_str = " ".join(map(str, var.flatten()))
+            f.write(f"{image_name} {var_str}\n")
 
 
 if __name__ == "__main__":
@@ -145,9 +146,10 @@ if __name__ == "__main__":
     parser.add_argument('--img_name', type=str, default='', help='Prefix of the image filenames to process. If not provided, all images will be processed.')
     parser.add_argument('--n_samples', type=int, default=25, help='Number of samples to generate for each image.')
     parser.add_argument('--folder_name', type=str, default=None, help='Folder name for input/output/mask subdirectories (optional).')
-
+    parser.add_argument('--output_file', type=str, default='output_sigma.txt', help='Output file for sigma values.')
+    
     args = parser.parse_args()
 
     torch.manual_seed(42)
     np.random.seed(42)
-    main(args.img_name, args.n_samples, args.folder_name)
+    main(args.img_name, args.n_samples, args.output_file, args.folder_name)
