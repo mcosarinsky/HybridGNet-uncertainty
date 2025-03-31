@@ -1,6 +1,10 @@
 Annotations/*
 Datasets/*
 Weights/*
+
 !Annotations/
 !Datasets/
 !Weights/
+
+visualizacion.txt
+__pycache__/
