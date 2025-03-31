@@ -1,5 +1,5 @@
 import argparse
-from models.HybridGNet2IGSC import HybridFast
+from models.HybridGNet2IGSC import Hybrid, HybridNoSkip
 from tqdm import tqdm
 
 import os 
@@ -70,7 +70,7 @@ def main(img_name, n_samples, folder_name=None):
     A_t, D_t, U_t = ([scipy_to_torch_sparse(x).to(device) for x in X] for X in (A_, D_, U_))
 
     # Initialize our efficient model
-    hybrid = HybridFast(config, D_t, U_t, A_t).to(device)
+    hybrid = Hybrid(config, D_t, U_t, A_t).to(device)
     # Load weights from the original model
     hybrid.load_state_dict(torch.load("../Weights/Hybrid_LH_FULL/bestMSE.pt", map_location=device))
     hybrid.eval()
