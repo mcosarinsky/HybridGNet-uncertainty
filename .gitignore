@@ -1,0 +1,6 @@
+Annotations/*
+Datasets/*
+Weights/*
+!Annotations/
+!Datasets/
+!Weights/
