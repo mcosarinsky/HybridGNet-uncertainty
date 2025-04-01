@@ -57,20 +57,27 @@ def apply_blur(image: np.ndarray, landmarks: list, size: int, severity: float) -
         blurred_image[y_start:y_end, x_start:x_end] = region
     return blurred_image.astype(np.uint8)
 
-def gaussian_blur(image, severity):
+def blur(image, severity, type='gaussian'):
     if severity < 1:
         return image  
     
     kernel_size = 2*severity + 1 # Define an odd kernel size based on severity
-    blurred_image = cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
+
+    if type == 'gaussian':
+        blurred_image = cv2.GaussianBlur(image, (kernel_size, kernel_size), 0)
+    elif type == 'median':
+        blurred_image = cv2.medianBlur(image, kernel_size)
+    else:
+        raise ValueError("Invalid blur type. Must be 'gaussian' or 'median'.")
     
     return blurred_image
 
+
 def gaussian_noise(image, severity):
-    if severity < 1:
-        return image  
+    noise = np.random.normal(0, severity, image.shape)  
 
-    noise = np.random.normal(0, severity, image.shape).astype(np.uint8)
-    noisy_image = cv2.add(image, noise) 
-
+    # Add noise to the image and clip values
+    noisy_image = image.astype(np.float32) + noise 
+    noisy_image = np.clip(noisy_image, 0, 255).astype(np.uint8)
+    
     return noisy_image

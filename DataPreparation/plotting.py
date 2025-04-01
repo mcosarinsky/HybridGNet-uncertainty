@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.patches import Ellipse
 import numpy as np
 import pandas as pd
@@ -142,6 +143,26 @@ def plot_sigmas_mean(sigma_dict, yscale='linear', grid=True):
         ax.set_title(f"{img_name[:20]}")
         ax.set_yscale(yscale)
         if grid: ax.grid(True, color='gray', linestyle='--', linewidth=0.5)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_global_uncertainty(sigma_dict, title=''):
+    data = []
+    labels = []
+
+    for key, value in sigma_dict.items():
+        data.append(value)
+        labels.append(key)
+
+    plt.figure(figsize=(10, 6))
+    sns.boxplot(data=data)
+
+    # Set x-ticks labels to the keys of sigmas_global
+    plt.xticks(np.arange(len(labels)), labels, rotation=45)
+    plt.xlabel('Corruption')
+    plt.ylabel('Avg std')
+    plt.title(title)
 
     plt.tight_layout()
     plt.show()

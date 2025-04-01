@@ -86,9 +86,9 @@ def read_sigma_file(file_path: str) -> dict:
             sigmas = np.array(parts[1:], dtype=np.float32)
             corr_level = int(img_name.split('_')[-1].split('.')[0])
             base_img_name = '_'.join(img_name.split('_')[:-1]) + '.png'
-            
+
             if base_img_name not in sigma_dict:
-                sigma_dict[base_img_name] = {'corr_levels': [], 'sigma_avgs': []}
+                sigma_dict[base_img_name] = {'corr_levels': [], 'sigmas': []}
             sigma_dict[base_img_name]['corr_levels'].append(corr_level)
             sigma_dict[base_img_name]['sigmas'].append(sigmas)
     return sigma_dict

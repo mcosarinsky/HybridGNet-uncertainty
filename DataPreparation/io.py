@@ -88,7 +88,7 @@ def sample_images(img_dir: str, num_samples: int = 15) -> list:
     all_images = [f for f in os.listdir(img_dir) if f.endswith('.png')]
     return random.sample(all_images, min(num_samples, len(all_images)))
 
-def process_images(img_dir: str, output_subdir: str, process_fn, severity_levels: list):
+def process_images(img_dir: str, output_subdir: str, process_fn, severity_levels: list, **kwargs):
     output_dir = os.path.join(img_dir, output_subdir)
     os.makedirs(output_dir, exist_ok=True)
     selected_images = sample_images(img_dir)
@@ -99,7 +99,7 @@ def process_images(img_dir: str, output_subdir: str, process_fn, severity_levels
         img_base, ext = os.path.splitext(img_name)
         
         for severity in severity_levels:
-            processed_img = process_fn(img, severity)
+            processed_img = process_fn(img, severity, **kwargs)
             output_name = f"{img_base}_{severity}{ext}"
             output_path = os.path.join(output_dir, output_name)
             cv2.imwrite(output_path, processed_img)
