@@ -1,4 +1,4 @@
 from .io import *
 from .metrics import *
-from .augmentation import *
+from .corruption import *
 from .plotting import *

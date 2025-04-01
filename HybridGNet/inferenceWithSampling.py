@@ -32,7 +32,7 @@ def getDenseMask(RL, LL, H):
     return img
 
 
-def main(img_name, n_samples, output_file, folder_name=None):
+def main(img_name, n_samples, output_file, folder_name=None, skip_connections=True):
     """
     Process images to generate multiple samples per image efficiently by
     encoding once and decoding multiple times with different z values.
@@ -61,6 +61,7 @@ def main(img_name, n_samples, output_file, folder_name=None):
         'n_nodes': [N1, N1, N1, N2, N2, N2],
         'latents': 64,
         'inputsize': 1024,
+        'K': 6,
         'filters': [2, 32, 32, 32, 16, 16, 16],
         'skip_features': 32,
         'eval_sampling': True  # Enable sampling during evaluation
@@ -69,25 +70,28 @@ def main(img_name, n_samples, output_file, folder_name=None):
     A_ = [A.copy(), A.copy(), A.copy(), AD.copy(), AD.copy(), AD.copy()]
     A_t, D_t, U_t = ([scipy_to_torch_sparse(x).to(device) for x in X] for X in (A_, D_, U_))
 
-    # Initialize our efficient model
-    hybrid = Hybrid(config, D_t, U_t, A_t).to(device)
-    # Load weights from the original model
-    hybrid.load_state_dict(torch.load("../Weights/Hybrid_LH_FULL/bestMSE.pt", map_location=device))
+    # Load model and setup folders
+    if skip_connections:
+        print('Using skip connections')
+        hybrid = Hybrid(config, D_t, U_t, A_t).to(device)
+        hybrid.load_state_dict(torch.load("../Weights/Hybrid_LH_FULL/bestMSE.pt", map_location=device))
+        
+        base_input_folder = '../Datasets/Chestxray/Test_images'
+        base_output_folder = '../Datasets/Chestxray/Output'
+    else:
+        print('Using no skip connections')
+        hybrid = HybridNoSkip(config, D_t, U_t, A_t).to(device)
+        hybrid.load_state_dict(torch.load("../Weights/NoSkip/best.pt", map_location=device))
+
+        base_input_folder = '../Datasets/Chestxray/Test_images_NoSkip'
+        base_output_folder = '../Datasets/Chestxray/Output_NoSkip'
+    
     hybrid.eval()
     print('Model loaded')
 
-    # Set up folders
-    base_input_folder = '../Datasets/Chestxray/Test_images'
-    base_output_folder = '../Datasets/Chestxray/Output'
-    base_mask_folder = '../Datasets/Chestxray/Masks'
-
     input_folder = os.path.join(base_input_folder, folder_name) if folder_name else base_input_folder
     output_folder = os.path.join(base_output_folder, folder_name) if folder_name else base_output_folder
-    mask_folder = os.path.join(base_mask_folder, folder_name) if folder_name else base_mask_folder
-
-    # Ensure output directories exist
     os.makedirs(output_folder, exist_ok=True)
-    os.makedirs(mask_folder, exist_ok=True)
 
     # Find all images to process
     data_root = pathlib.Path(input_folder)
@@ -125,15 +129,6 @@ def main(img_name, n_samples, output_file, folder_name=None):
                 
                 output_sample_path = image_path.replace('.txt', f'_{sample_id + 1}.txt')
                 np.savetxt(output_sample_path, output_np, fmt='%i', delimiter=' ')
-                
-                # Generate and save the mask
-                RL = output_np[:44]
-                LL = output_np[44:94]
-                H = output_np[94:]
-                #outseg = getDenseMask(RL, LL, H)
-                
-                output_mask_path = output_sample_path.replace('.txt', '_mask.png').replace(output_folder, mask_folder)
-                #cv2.imwrite(output_mask_path, outseg)
             
     with open(f'../Datasets/Chestxray/{output_file}', 'w') as f:
         for image_name, var in logs:
@@ -144,12 +139,13 @@ def main(img_name, n_samples, output_file, folder_name=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run inference for images.')
     parser.add_argument('--img_name', type=str, default='', help='Prefix of the image filenames to process. If not provided, all images will be processed.')
-    parser.add_argument('--n_samples', type=int, default=25, help='Number of samples to generate for each image.')
+    parser.add_argument('--n_samples', type=int, default=50, help='Number of samples to generate for each image.')
     parser.add_argument('--folder_name', type=str, default=None, help='Folder name for input/output/mask subdirectories (optional).')
     parser.add_argument('--output_file', type=str, default='output_sigma.txt', help='Output file for sigma values.')
+    parser.add_argument('--skip_connections', action='store_true', default=False, help='Use skip connections in the model.')    
     
     args = parser.parse_args()
 
     torch.manual_seed(42)
     np.random.seed(42)
-    main(args.img_name, args.n_samples, args.output_file, args.folder_name)
+    main(args.img_name, args.n_samples, args.output_file, args.folder_name, args.skip_connections)

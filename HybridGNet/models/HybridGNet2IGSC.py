@@ -113,7 +113,7 @@ class Hybrid(nn.Module):
                 
         n_nodes = config['n_nodes']
         self.filters = config['filters']
-        self.K = 6
+        self.K = config['K']
         self.window = (3,3)
         
         # Generate the fully connected layer for the decoder
