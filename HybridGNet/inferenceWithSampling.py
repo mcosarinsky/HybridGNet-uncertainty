@@ -75,23 +75,22 @@ def main(img_name, n_samples, output_file, folder_name=None, skip_connections=Tr
         print('Using skip connections')
         hybrid = Hybrid(config, D_t, U_t, A_t).to(device)
         hybrid.load_state_dict(torch.load("../Weights/Hybrid_LH_FULL/bestMSE.pt", map_location=device))
-        
-        base_input_folder = '../Datasets/Chestxray/Test_images'
-        base_output_folder = '../Datasets/Chestxray/Output'
+        base_output_folder = '../Datasets/Chestxray/Output_Skip'
     else:
         print('Using no skip connections')
         hybrid = HybridNoSkip(config, D_t, U_t, A_t).to(device)
         hybrid.load_state_dict(torch.load("../Weights/NoSkip/best.pt", map_location=device))
-
-        base_input_folder = '../Datasets/Chestxray/Test_images_NoSkip'
         base_output_folder = '../Datasets/Chestxray/Output_NoSkip'
     
     hybrid.eval()
     print('Model loaded')
 
+    base_input_folder = '../Datasets/Chestxray/Test_images'
     input_folder = os.path.join(base_input_folder, folder_name) if folder_name else base_input_folder
     output_folder = os.path.join(base_output_folder, folder_name) if folder_name else base_output_folder
     os.makedirs(output_folder, exist_ok=True)
+
+    print('Writing to', output_folder)
 
     # Find all images to process
     data_root = pathlib.Path(input_folder)
