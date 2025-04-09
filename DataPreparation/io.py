@@ -3,6 +3,7 @@ import random
 import cv2
 import pandas as pd
 import numpy as np
+from natsort import natsorted
 
 def load_image_and_samples(img_dir: str, output_dir: str, img_name: str):
     """
@@ -22,12 +23,12 @@ def load_image_and_samples(img_dir: str, output_dir: str, img_name: str):
     if img is None:
         raise FileNotFoundError(f"Image not found at {img_path}")
 
-    base_name = img_name.split('.png')[0]
+    base_name = img_name.split('.png')[0] + '_'
     sample_files = [f for f in os.listdir(output_dir) if f.startswith(base_name) and f.endswith('.txt')]
     if not sample_files:
         raise FileNotFoundError(f"No sample files found for {base_name} in {output_dir}")
-    sample_files.sort(key=lambda x: int(x.split('_')[-1].split('.txt')[0]))
 
+    sample_files = natsorted(sample_files)
     data = []
     for sample_idx, sample_file in enumerate(sample_files, 1):
         output_path = os.path.join(output_dir, sample_file)
@@ -83,23 +84,3 @@ def sample_landmarks(landmark_dict, organ, n_samples=1):
         indices = np.random.choice(len(landmarks), n_samples, replace=False)
 
         return landmarks[indices]
-    
-def sample_images(img_dir: str, num_samples: int = 15) -> list:
-    all_images = [f for f in os.listdir(img_dir) if f.endswith('.png')]
-    return random.sample(all_images, min(num_samples, len(all_images)))
-
-def process_images(img_dir: str, output_subdir: str, process_fn, severity_levels: list, **kwargs):
-    output_dir = os.path.join(img_dir, output_subdir)
-    os.makedirs(output_dir, exist_ok=True)
-    selected_images = sample_images(img_dir)
-    
-    for img_name in selected_images:
-        img_path = os.path.join(img_dir, img_name)
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-        img_base, ext = os.path.splitext(img_name)
-        
-        for severity in severity_levels:
-            processed_img = process_fn(img, severity, **kwargs)
-            output_name = f"{img_base}_{severity}{ext}"
-            output_path = os.path.join(output_dir, output_name)
-            cv2.imwrite(output_path, processed_img)

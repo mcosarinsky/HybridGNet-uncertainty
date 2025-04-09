@@ -129,7 +129,7 @@ def plot_comparison(df_orig, img_orig, df_corr, img_corr, plot_fn, show_global_b
     return fig, (ax1, ax2)
 
 def plot_sigmas_mean(sigma_dict, yscale='linear', grid=True):
-    """Plots sigma values for a given sigma dictionary."""
+    """Plots sigma values for a given sigma dictionary and returns fig, ax."""
     n_images = len(sigma_dict)
     n_cols = 3
     n_rows = (n_images + n_cols - 1) // n_cols  
@@ -142,12 +142,14 @@ def plot_sigmas_mean(sigma_dict, yscale='linear', grid=True):
         ax.scatter(vals['corr_levels'], np.array(vals['sigmas']).mean(axis=1))
         ax.set_title(f"{img_name[:20]}")
         ax.set_yscale(yscale)
-        if grid: ax.grid(True, color='gray', linestyle='--', linewidth=0.5)
+        if grid: 
+            ax.grid(True, color='gray', linestyle='--', linewidth=0.5)
 
     plt.tight_layout()
-    plt.show()
+    return fig, axes  # Return fig, axes instead of showing it
 
 def plot_global_uncertainty(sigma_dict, title=''):
+    """Plots global uncertainty using a boxplot and returns fig, ax."""
     data = []
     labels = []
 
@@ -155,14 +157,14 @@ def plot_global_uncertainty(sigma_dict, title=''):
         data.append(value)
         labels.append(key)
 
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(data=data)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.boxplot(data=data, ax=ax)
 
-    # Set x-ticks labels to the keys of sigmas_global
-    plt.xticks(np.arange(len(labels)), labels, rotation=45)
-    plt.xlabel('Corruption')
-    plt.ylabel('Avg std')
-    plt.title(title)
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels, rotation=45)
+    ax.set_xlabel('Corruption')
+    ax.set_ylabel('Avg std')
+    ax.set_title(title)
 
     plt.tight_layout()
-    plt.show()
+    return fig, ax

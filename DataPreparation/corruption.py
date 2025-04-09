@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+import os
+import random
 
 def apply_occlusion(image: np.ndarray, landmarks: list, size: int) -> np.ndarray:
     """
@@ -72,7 +74,6 @@ def blur(image, severity, type='gaussian'):
     
     return blurred_image
 
-
 def gaussian_noise(image, severity):
     noise = np.random.normal(0, severity, image.shape)  
 
@@ -81,3 +82,71 @@ def gaussian_noise(image, severity):
     noisy_image = np.clip(noisy_image, 0, 255).astype(np.uint8)
     
     return noisy_image
+
+def apply_corruption(img_dir: str, output_subdir: str, corruption_fn, severity_levels: list, n_samples=15, **kwargs):
+    output_dir = os.path.join(img_dir, output_subdir)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    all_images = [f for f in os.listdir(img_dir) if f.endswith('.png')]
+    selected_images = random.sample(all_images, min(n_samples, len(all_images)))
+    
+    for img_name in selected_images:
+        img_path = os.path.join(img_dir, img_name)
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        img_base, ext = os.path.splitext(img_name)
+        
+        for severity in severity_levels:
+            processed_img = corruption_fn(img, severity, **kwargs)
+            output_name = f"{img_base}_{severity}{ext}"
+            output_path = os.path.join(output_dir, output_name)
+            cv2.imwrite(output_path, processed_img)
+
+def blend_images(datasets, N_samples, output_dir, alpha_step=0.05):
+    """
+    For a given number of samples, randomly picks 2 images from the same dataset (without repeating combinations)
+    and blends them for alpha values from 0 to 1 (step alpha_step). Save blended images with filenames reflecting the alpha level.
+    
+    Parameters:
+        datasets (dict): Dictionary with keys indicating dataset and list of image file paths as values.
+        N_samples (int): Number of unique image combinations to process.
+        output_dir (str): Directory where the blended images will be saved.
+        alpha_step (float): Step size for alpha from 0 to 1.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    used_combinations = {key: set() for key in datasets}  # track used pairs for each dataset
+    
+    sample_count = 0
+    keys = list(datasets.keys())
+    while sample_count < N_samples:
+        # Randomly pick a dataset 
+        key = random.choice(keys)
+
+        # Randomly select two distinct images
+        img_pair = tuple(sorted(random.sample(datasets[key], 2)))
+        # Check if this combination (order doesn't matter) has been processed already
+        if img_pair in used_combinations[key]:
+            continue
+        
+        # Mark the combination as used
+        used_combinations[key].add(img_pair)
+        sample_count += 1
+        
+        # Read the two images
+        img1 = cv2.imread(img_pair[0], cv2.IMREAD_UNCHANGED)
+        img2 = cv2.imread(img_pair[1], cv2.IMREAD_UNCHANGED)
+        
+        # Get base names for file naming (without extension)
+        base1 = os.path.splitext(os.path.basename(img_pair[0]))[0]
+        base2 = os.path.splitext(os.path.basename(img_pair[1]))[0]
+        
+        # For each alpha value, blend and save
+        alphas = np.arange(0, 1 + alpha_step, alpha_step)
+        for alpha in alphas:
+            blended =  cv2.addWeighted(img1, alpha, img2, 1 - alpha, 0)
+            alpha_int = int(round(alpha * 100))
+
+            # Create filename with image names and alpha level
+            filename = f"{base1}_{base2}_{alpha_int}.png"
+            output_path = os.path.join(output_dir, filename)
+            cv2.imwrite(output_path, blended)

@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 from collections import defaultdict
 from natsort import natsorted
 from .io import load_image_and_samples, extract_landmarks
@@ -62,7 +63,7 @@ def process_corr_images(img_dir_corr: str, output_dir_corr: str, selected_images
       dict: Dictionary mapping image names to sigma averages and corruption levels.
     """
     sigma_dict = defaultdict(lambda: {"sigmas": [], "corr_levels": []})
-    for img_name in selected_images:
+    for img_name in tqdm(selected_images):
         img_prefix = img_name.replace('.png', '')
         corr_images = natsorted([f for f in os.listdir(img_dir_corr) if f.startswith(img_prefix)])
         for img_file in corr_images:
@@ -103,3 +104,15 @@ def compute_global_vmax(df_original, df_corrupted):
     max_corrupted = calc_sigma_avg(df_corrupted)
     
     return max(max_original, max_corrupted)
+
+def process_and_store_sigma(subdir, img_dir, output_dir):
+    """Processes corrupted images and returns a sigma dictionary."""
+    img_dir_path = os.path.join(img_dir, 'Corrupted', subdir)
+    output_dir_path = os.path.join(output_dir, 'Corrupted', subdir)
+    
+    selected_images = {
+        "_".join(file.split('_')[:-1]) + ".png"
+        for file in os.listdir(img_dir_path)
+    }
+    
+    return process_corr_images(img_dir_path, output_dir_path, selected_images)
