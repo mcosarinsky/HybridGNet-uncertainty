@@ -84,7 +84,9 @@ def read_sigma_file(file_path: str) -> dict:
         for line in f:
             parts = line.strip().split()
             img_name = parts[0]
-            sigmas = np.array(parts[1:], dtype=np.float32)
+
+            # Latents are stored as variance, take sqrt to get std
+            sigmas = np.sqrt(np.array(parts[1:], dtype=np.float32)) 
             corr_level = int(img_name.split('_')[-1].split('.')[0])
             base_img_name = '_'.join(img_name.split('_')[:-1]) + '.png'
 

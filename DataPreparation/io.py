@@ -1,5 +1,6 @@
 import os
 import random
+import pathlib
 import cv2
 import pandas as pd
 import numpy as np
@@ -23,7 +24,13 @@ def load_image_and_samples(img_dir: str, output_dir: str, img_name: str):
     if img is None:
         raise FileNotFoundError(f"Image not found at {img_path}")
 
-    base_name = img_name.split('.png')[0] + '_'
+    img_name = pathlib.PosixPath(img_name)
+    base_path = str(img_name.parent)
+    base_name = img_name.stem + '_'
+    
+    if base_path != '.':
+        output_dir += '/' + base_path
+
     sample_files = [f for f in os.listdir(output_dir) if f.startswith(base_name) and f.endswith('.txt')]
     if not sample_files:
         raise FileNotFoundError(f"No sample files found for {base_name} in {output_dir}")

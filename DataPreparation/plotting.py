@@ -154,7 +154,7 @@ def plot_global_uncertainty(sigma_dict, title=''):
     labels = []
 
     for key, value in sigma_dict.items():
-        data.append(value)
+        data.append(np.array(value).flatten())
         labels.append(key)
 
     fig, ax = plt.subplots(figsize=(10, 6))
