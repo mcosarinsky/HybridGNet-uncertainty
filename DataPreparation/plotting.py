@@ -41,6 +41,37 @@ def plot_mean_with_color_gradient(df: pd.DataFrame, img=None, fig=None, ax=None,
 
     return fig, ax, scatter
 
+def plot_relative_uncertainty(df_orig, df_corr, img_corr):
+    """
+    Plot the ratio of uncertainties (corr/orig) at each node on the corrupted image.
+    """
+
+    stds_o = df_orig.groupby('Node')[['X', 'Y']].std()
+    stds_c = df_corr.groupby('Node')[['X', 'Y']].std()
+
+    # Calculate metrics for each node
+    sigma_o = (stds_o['X'] + stds_o['Y']) / 2
+    sigma_c = (stds_c['X'] + stds_c['Y']) / 2
+    ratio = (sigma_c / sigma_o).rename('ratio')
+    means_c = df_corr.groupby('Node')[['X', 'Y']].mean()
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.imshow(img_corr, cmap='gray')
+    scatter = ax.scatter(
+        means_c['X'], means_c['Y'],
+        c=ratio.values, cmap='hot', s=50
+    )
+    ax.set_title("Relative Uncertainty (σ_corr / σ_orig)")
+    ax.set_xlim(0, img_corr.shape[1])
+    ax.set_ylim(img_corr.shape[0], 0)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+
+    cbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
+
+    return fig, ax, scatter
+
+
 def plot_mean_with_uncertainty(df: pd.DataFrame, img=None, use_error_bars: bool = False, scale_factor: float = 1.0, fig=None, ax=None):
     """
     Plot mean node locations with uncertainty visualization using either error bars or ellipses.
@@ -148,7 +179,7 @@ def plot_sigmas_mean(sigma_dict, yscale='linear', grid=True):
     plt.tight_layout()
     return fig, axes  # Return fig, axes instead of showing it
 
-def plot_global_uncertainty(sigma_dict, title=''):
+def plot_global_uncertainty(sigma_dict, title='', ax=None):
     """Plots global uncertainty using a boxplot and returns fig, ax."""
     data = []
     labels = []
@@ -157,14 +188,19 @@ def plot_global_uncertainty(sigma_dict, title=''):
         data.append(np.array(value).flatten())
         labels.append(key)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # If ax is provided, plot on the existing axes
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+    else:
+        fig = ax.figure  # If ax is passed, we use the provided figure
+
     sns.boxplot(data=data, ax=ax)
 
     ax.set_xticks(np.arange(len(labels)))
     ax.set_xticklabels(labels, rotation=45)
-    ax.set_xlabel('Corruption')
-    ax.set_ylabel('Avg std')
-    ax.set_title(title)
+    ax.set_xlabel('Corruption', fontsize=13)
+    ax.set_ylabel('Sigma', fontsize=13)
+    ax.set_title(title, fontsize=14)
 
     plt.tight_layout()
     return fig, ax

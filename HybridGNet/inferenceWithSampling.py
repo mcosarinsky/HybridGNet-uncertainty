@@ -32,7 +32,7 @@ def getDenseMask(RL, LL, H):
     return img
 
 
-def main(img_name, n_samples, output_file, base_folder, folder_name=None, skip_connections=True):
+def main(n_samples, output_file, base_folder, folder_name=None, skip_connections=True):
     """
     Process images to generate multiple samples per image efficiently by
     encoding once and decoding multiple times with different z values.
@@ -117,7 +117,7 @@ def main(img_name, n_samples, output_file, base_folder, folder_name=None, skip_c
             img = cv2.imread(image, 0) / 255.0
             data = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(device).float()
             
-            # Encode only once - this is the key efficiency improvement
+            # Encode only once 
             mu, log_var, conv6, conv5 = hybrid.encode(data)
             log_var_np = log_var.cpu().numpy()
             logs.append((image_name, np.exp(log_var_np))) # store variance of latents
@@ -145,7 +145,6 @@ def main(img_name, n_samples, output_file, base_folder, folder_name=None, skip_c
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run inference for images.')
-    parser.add_argument('--img_name', type=str, default='', help='Prefix of the image filenames to process. If not provided, all images will be processed.')
     parser.add_argument('--n_samples', type=int, default=50, help='Number of samples to generate for each image.')
     parser.add_argument('--folder_name', type=str, default=None, help='Folder name for input/output/mask subdirectories (optional).')
     parser.add_argument('--base_folder', type=str, default='', help='Base folder for input/output/mask subdirectories.')
@@ -156,4 +155,4 @@ if __name__ == "__main__":
 
     torch.manual_seed(42)
     np.random.seed(42)
-    main(args.img_name, args.n_samples, args.output_file, args.base_folder, args.folder_name, args.skip_connections)
+    main(args.n_samples, args.output_file, args.base_folder, args.folder_name, args.skip_connections)
