@@ -4,12 +4,13 @@ from matplotlib.patches import Ellipse
 import numpy as np
 import pandas as pd
 
+
 def plot_mean_with_color_gradient(df: pd.DataFrame, img=None, fig=None, ax=None, show_bar: bool = True, vmin=0, vmax=None):
     """
     Plot the mean (x, y) for each node with a color gradient representing uncertainty.
 
     Parameters:
-      df (pd.DataFrame): DataFrame with columns ['Node', 'Sample', 'X', 'Y'].
+      df (pd.DataFrame): DataFrame with columns ['Mean x', 'Mean y', 'Std x', 'Std y'], indexed by node.
       img: Optional background image.
       fig, ax: Matplotlib figure and axes objects.
       show_bar (bool): Whether to display a colorbar.
@@ -21,15 +22,14 @@ def plot_mean_with_color_gradient(df: pd.DataFrame, img=None, fig=None, ax=None,
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=(6, 6))
 
-    node_groups = df.groupby('Node')
-    means = node_groups[['X', 'Y']].mean()
-    stds = node_groups[['X', 'Y']].std()
-    sigma_avg = (stds['X'] + stds['Y']) / 2
-
     if img is not None:
         ax.imshow(img, cmap='gray')
 
-    scatter = ax.scatter(means['X'], means['Y'], c=sigma_avg, cmap='hot', s=50, vmin=vmin, vmax=vmax)
+    # Average of std x and std y for color
+    sigma_avg = (df['Std x'] + df['Std y']) / 2
+
+    scatter = ax.scatter(df['Mean x'], df['Mean y'], c=sigma_avg, cmap='hot', s=50, vmin=vmin, vmax=vmax)
+
     if show_bar:
         fig.colorbar(scatter, ax=ax, label='Average Std (Uncertainty)')
 
@@ -44,21 +44,20 @@ def plot_mean_with_color_gradient(df: pd.DataFrame, img=None, fig=None, ax=None,
 def plot_relative_uncertainty(df_orig, df_corr, img_corr):
     """
     Plot the ratio of uncertainties (corr/orig) at each node on the corrupted image.
+    Assumes both dataframes have ['Mean x', 'Mean y', 'Std x', 'Std y'] columns and node index.
     """
+    # Compute average uncertainty per node
+    sigma_o = (df_orig['Std x'] + df_orig['Std y']) / 2
+    sigma_c = (df_corr['Std x'] + df_corr['Std y']) / 2
+    ratio = (sigma_c / sigma_o).rename("ratio")
 
-    stds_o = df_orig.groupby('Node')[['X', 'Y']].std()
-    stds_c = df_corr.groupby('Node')[['X', 'Y']].std()
-
-    # Calculate metrics for each node
-    sigma_o = (stds_o['X'] + stds_o['Y']) / 2
-    sigma_c = (stds_c['X'] + stds_c['Y']) / 2
-    ratio = (sigma_c / sigma_o).rename('ratio')
-    means_c = df_corr.groupby('Node')[['X', 'Y']].mean()
+    # Get corrupted means for plotting
+    means_c = df_corr[['Mean x', 'Mean y']]
 
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.imshow(img_corr, cmap='gray')
     scatter = ax.scatter(
-        means_c['X'], means_c['Y'],
+        means_c['Mean x'], means_c['Mean y'],
         c=ratio.values, cmap='hot', s=50
     )
     ax.set_title("Relative Uncertainty (σ_corr / σ_orig)")
@@ -66,64 +65,9 @@ def plot_relative_uncertainty(df_orig, df_corr, img_corr):
     ax.set_ylim(img_corr.shape[0], 0)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
-
-    cbar = fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
+    fig.colorbar(scatter, ax=ax, fraction=0.046, pad=0.04)
 
     return fig, ax, scatter
-
-
-def plot_mean_with_uncertainty(df: pd.DataFrame, img=None, use_error_bars: bool = False, scale_factor: float = 1.0, fig=None, ax=None):
-    """
-    Plot mean node locations with uncertainty visualization using either error bars or ellipses.
-
-    Parameters:
-      df (pd.DataFrame): DataFrame with columns 'Node', 'X', and 'Y'.
-      img: Optional background image.
-      use_error_bars (bool): If True, use error bars; otherwise, use ellipses.
-      scale_factor (float): Factor to scale the uncertainty visualization.
-      fig, ax: Matplotlib figure and axes objects.
-
-    Returns:
-      fig, ax: The figure and axes objects.
-    """
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(figsize=(6, 6))
-
-    node_groups = df.groupby('Node')
-    means = node_groups[['X', 'Y']].mean()
-    stds = node_groups[['X', 'Y']].std()
-
-    if img is not None:
-        ax.imshow(img, cmap='gray')
-
-    ax.plot(means['X'], means['Y'], 'o', color='blue', label='Mean')
-
-    if use_error_bars:
-        ax.errorbar(means['X'], means['Y'],
-                    xerr=1.96 * stds['X'] * scale_factor,
-                    yerr=1.96 * stds['Y'] * scale_factor,
-                    fmt='none', ecolor='red', alpha=0.5, elinewidth=0.5, capsize=3)
-    else:
-        for node, group in node_groups:
-            cov = np.cov(group['X'], group['Y'])
-            eigenvalues, eigenvectors = np.linalg.eig(cov)
-            axis_length_1 = np.sqrt(eigenvalues[0] * 5.991) * scale_factor
-            axis_length_2 = np.sqrt(eigenvalues[1] * 5.991) * scale_factor
-            angle = np.rad2deg(np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]))
-            ell = Ellipse(xy=means.loc[node].values,
-                          width=2 * axis_length_1,
-                          height=2 * axis_length_2,
-                          angle=angle,
-                          edgecolor='red', facecolor='none', alpha=0.5)
-            ax.add_patch(ell)
-
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_xlim(0, 1024)
-    ax.set_ylim(0, 1024)
-    ax.invert_yaxis()
-
-    return fig, ax, None
 
 def plot_comparison(df_orig, img_orig, df_corr, img_corr, plot_fn, show_global_bar=False, **kwargs):
     """
@@ -204,3 +148,90 @@ def plot_global_uncertainty(sigma_dict, title='', ax=None):
 
     plt.tight_layout()
     return fig, ax
+
+def plot_kde_comparison_grid(
+    id_skip, ood_skip, id_noskip, ood_noskip, datasets, 
+    clip_skip=(0, 0.2), clip_noskip=(0, 0.5),
+    suptitle="", n_cols=5, height_per_row=7
+):
+    n_rows = 2
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, height_per_row * n_rows))
+    axes = axes.reshape(n_rows, n_cols)
+
+    for i, dataset in enumerate(datasets):
+        col = i % n_cols
+
+        # Handle flexible clip values
+        clip_skip_val = clip_skip[dataset] if isinstance(clip_skip, dict) else clip_skip
+        clip_noskip_val = clip_noskip[dataset] if isinstance(clip_noskip, dict) else clip_noskip
+
+        # --- Skip row (top) ---
+        ax_skip = axes[0, col]
+        sns.kdeplot(ood_skip[dataset], fill=True, color="red", label="OOD", ax=ax_skip, alpha=0.5, clip=clip_skip_val)
+        sns.kdeplot(id_skip[dataset], fill=True, color="blue", label="ID", ax=ax_skip, alpha=0.5, clip=clip_skip_val)
+        ax_skip.set_xlim(left=0)
+        ax_skip.set_title(dataset, fontsize=15.5)
+        ax_skip.set_xlabel('Sigma', fontsize=14)
+        ax_skip.set_ylabel("Density", fontsize=14)
+        ax_skip.legend()
+
+        # --- No-skip row (bottom) ---
+        ax_noskip = axes[1, col]
+        sns.kdeplot(ood_noskip[dataset], fill=True, color="red", label="OOD", ax=ax_noskip, alpha=0.5, clip=clip_noskip_val)
+        sns.kdeplot(id_noskip[dataset], fill=True, color="blue", label="ID", ax=ax_noskip, alpha=0.5, clip=clip_noskip_val)
+        ax_noskip.set_xlim(left=0)
+        ax_noskip.set_title(dataset, fontsize=15.5)
+        ax_noskip.set_xlabel('Sigma', fontsize=14)
+        ax_noskip.set_ylabel("Density", fontsize=14)
+        ax_noskip.legend()
+
+    # Row labels
+    fig.text(0.01, 0.74, 'Skip-connections', va='center', ha='left', rotation='vertical', fontsize=17, fontweight='bold')
+    fig.text(0.01, 0.28, 'No skip-connections', va='center', ha='left', rotation='vertical', fontsize=17, fontweight='bold')
+
+    fig.suptitle(suptitle, fontsize=22)
+    plt.tight_layout(rect=[0.025, 0, 1, 0.99], pad=2.0)
+    return fig, axes
+
+def compute_roc(values_id, values_ood):
+    """Compute ROC curve, AUC, and best threshold."""
+    y_true = np.concatenate([np.zeros(len(values_id)), np.ones(len(values_ood))])
+    y_scores = np.concatenate([values_id, values_ood])
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+    auc_score = roc_auc_score(y_true, y_scores)
+    best_thresh = thresholds[np.argmax(tpr - fpr)]
+    return fpr, tpr, auc_score, best_thresh
+
+
+def plot_roc_curves(datasets, id_skip, ood_skip, id_noskip, ood_noskip, title):
+    """Plot ROC curves for skip and no skip datasets."""
+    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+
+    # SKIP
+    values_id = np.concatenate([id_skip[ds] for ds in datasets])
+    values_ood = np.concatenate([ood_skip[ds] for ds in datasets])
+    fpr, tpr, auc_score, best_thresh = compute_roc(values_id, values_ood)
+    axs[0].plot(fpr, tpr, label=f'ROC curve (AUC = {auc_score:.2f})')
+    axs[0].plot([0, 1], [0, 1], 'k--')
+    axs[0].set_xlabel('False Positive Rate')
+    axs[0].set_ylabel('True Positive Rate')
+    axs[0].set_title('Skip-connections')
+    axs[0].legend(loc="lower right")
+    print(f"Best threshold (Skip): {best_thresh:.6f}")
+
+    # NO SKIP
+    values_id = np.concatenate([id_noskip[ds] for ds in datasets])
+    values_ood = np.concatenate([ood_noskip[ds] for ds in datasets])
+    fpr, tpr, auc_score, best_thresh = compute_roc(values_id, values_ood)
+    axs[1].plot(fpr, tpr, label=f'ROC curve (AUC = {auc_score:.2f})')
+    axs[1].plot([0, 1], [0, 1], 'k--')
+    axs[1].set_xlabel('False Positive Rate')
+    axs[1].set_ylabel('True Positive Rate')
+    axs[1].set_title('No skip-connections')
+    axs[1].legend(loc="lower right")
+    print(f"Best threshold (No Skip): {best_thresh:.6f}")
+
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    
+    return fig, axs

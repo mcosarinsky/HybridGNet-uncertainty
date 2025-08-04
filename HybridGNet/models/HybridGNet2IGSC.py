@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.modelUtils import ChebConv, Pool, residualBlock
 import torchvision.ops.roi_align as roi_align
-
 import numpy as np
 
 class EncoderConv(nn.Module):
@@ -113,7 +112,7 @@ class Hybrid(nn.Module):
                 
         n_nodes = config['n_nodes']
         self.filters = config['filters']
-        self.K = config['K']
+        self.K = 6
         self.window = (3,3)
         
         # Generate the fully connected layer for the decoder
@@ -199,12 +198,12 @@ class Hybrid(nn.Module):
         
     def forward(self, x):
         """Full forward pass (both encoding and decoding)"""
-        mu, log_var, conv6, conv5 = self.encode(x)
+        self.mu, self.log_var, conv6, conv5 = self.encode(x)
         
         if self.training or self.eval_sampling:
-            z = self.sampling(mu, log_var)
+            z = self.sampling(self.mu, self.log_var)
         else:
-            z = mu
+            z = self.mu
             
         return self.decode(z, conv6, conv5) 
     
@@ -225,7 +224,7 @@ class HybridNoSkip(nn.Module):
                 
         n_nodes = config['n_nodes']
         self.filters = config['filters']
-        self.K = config['K'] # orden del polinomio
+        self.K = 6
         
         # Genero la capa fully connected del decoder
         outshape = self.filters[-1] * n_nodes[-1]        
@@ -295,11 +294,11 @@ class HybridNoSkip(nn.Module):
 
     def forward(self, x):
         # Full forward pass: encode, sample (if training), then decode.
-        mu, log_var, conv6, conv5 = self.encode(x)
+        self.mu, self.log_var, conv6, conv5 = self.encode(x)
         
         if self.training:
-            z = self.sampling(mu, log_var)
+            z = self.sampling(self.mu, self.log_var)
         else:
-            z = mu
+            z = self.mu
             
         return self.decode(z, conv6, conv5)

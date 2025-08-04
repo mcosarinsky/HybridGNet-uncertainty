@@ -1,47 +1,18 @@
-import argparse
-from models.HybridGNet2IGSC import Hybrid, HybridNoSkip
-from tqdm import tqdm
-
-import os 
-import numpy as np
-from torchvision import transforms
-import torch
-
-from utils.utils import scipy_to_torch_sparse, genMatrixesLungsHeart
-import scipy.sparse as sp
-
+import os
 import cv2
-import pathlib
+import torch
 import re
-
-def natural_key(string_):
-    """Sort helper for natural string sorting."""
-    return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
-
-def getDenseMask(RL, LL, H):
-    img = np.zeros([1024, 1024], dtype='uint8')
-    
-    RL = RL.reshape(-1, 1, 2).astype('int')
-    LL = LL.reshape(-1, 1, 2).astype('int')
-    H = H.reshape(-1, 1, 2).astype('int')
-
-    img = cv2.drawContours(img, [RL], -1, 1, -1)
-    img = cv2.drawContours(img, [LL], -1, 1, -1)
-    img = cv2.drawContours(img, [H], -1, 2, -1)
-    
-    return img
+import numpy as np
+import argparse
+import pathlib
+import scipy.sparse as sp
+from collections import defaultdict
+from tqdm import tqdm
+from models.HybridGNet2IGSC import Hybrid, HybridNoSkip
+from utils.utils import genMatrixesLungsHeart, scipy_to_torch_sparse
 
 
-def main(n_samples, output_file, base_folder, folder_name=None, skip_connections=True):
-    """
-    Process images to generate multiple samples per image efficiently by
-    encoding once and decoding multiple times with different z values.
-    
-    Args:
-        img_name: Name pattern of the image(s) to process (or None for all images)
-        n_samples: Number of samples to generate per image
-        folder_name: Optional subfolder name
-    """
+def main(n_samples, image_folder, output_folder, weights_path, skip_connections):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # Load and prepare matrices
@@ -56,6 +27,7 @@ def main(n_samples, output_file, base_folder, folder_name=None, skip_connections
 
     D_ = [D.copy()]
     U_ = [U.copy()]
+    A_ = [A.copy(), A.copy(), A.copy(), AD.copy(), AD.copy(), AD.copy()]
 
     config = {
         'n_nodes': [N1, N1, N1, N2, N2, N2],
@@ -64,95 +36,109 @@ def main(n_samples, output_file, base_folder, folder_name=None, skip_connections
         'K': 6,
         'filters': [2, 32, 32, 32, 16, 16, 16],
         'skip_features': 32,
-        'eval_sampling': True  # Enable sampling during evaluation
+        'eval_sampling': True
     }
 
-    A_ = [A.copy(), A.copy(), A.copy(), AD.copy(), AD.copy(), AD.copy()]
     A_t, D_t, U_t = ([scipy_to_torch_sparse(x).to(device) for x in X] for X in (A_, D_, U_))
 
-    base_folder = os.path.join('../Datasets/Chestxray', base_folder)
-
-    # Load model and setup folders
+    # Load model
     if skip_connections:
-        print('Using skip connections')
-        hybrid = Hybrid(config, D_t, U_t, A_t).to(device)
-        hybrid.load_state_dict(torch.load("../Weights/Hybrid_LH_FULL/bestMSE.pt", map_location=device))
-        base_output_folder = base_folder + '/Output_Skip'
+        print("Using skip connections")
+        model = Hybrid(config, D_t, U_t, A_t).to(device)
     else:
-        print('Using no skip connections')
-        hybrid = HybridNoSkip(config, D_t, U_t, A_t).to(device)
-        hybrid.load_state_dict(torch.load("../Weights/NoSkip/best.pt", map_location=device))
-        base_output_folder = base_folder + '/Output_NoSkip'
-    
-    hybrid.eval()
-    print('Model loaded')
+        print("Using no skip connections")
+        model = HybridNoSkip(config, D_t, U_t, A_t).to(device)
 
-    base_input_folder = base_folder + '/images'
-    input_folder = os.path.join(base_input_folder, folder_name) if folder_name else base_input_folder
-    output_folder = os.path.join(base_output_folder, folder_name) if folder_name else base_output_folder
-    os.makedirs(output_folder, exist_ok=True)
+    model.load_state_dict(torch.load(weights_path, map_location=device))
+    model.eval()
+    print("Model loaded")
 
-    print('Writing to', output_folder)
+    # Recursively find images
+    image_folder = pathlib.Path(image_folder)
+    output_folder = pathlib.Path(output_folder)
+    valid_exts = [".png", ".jpg"]
+    image_paths = [p for p in image_folder.rglob("*") if p.suffix.lower() in valid_exts]
+    print(f"Processing {len(image_paths)} images from {image_folder}...")
 
-    # Find all images to process
-    data_root = pathlib.Path(input_folder)
-    valid_extensions = ['.png', '.jpg']
-    all_files = [str(path) for path in data_root.rglob("*") if path.suffix.lower() in valid_extensions]
-    all_files.sort(key=natural_key)  
-    print(f'Processing {len(all_files)} images in {input_folder}')
+    latents_per_folder = defaultdict(list)
 
-    logs = []
     with torch.no_grad():
-        for image in tqdm(all_files):
-            relative_path = os.path.relpath(image, input_folder)
-            
-            # Define corresponding output path
-            output_subfolder = os.path.join(output_folder, os.path.dirname(relative_path))  
-            os.makedirs(output_subfolder, exist_ok=True)
-            
-            image_name = os.path.basename(image)
-            image_path = os.path.join(output_subfolder, os.path.splitext(image_name)[0] + ".txt")
+        for image_path in tqdm(image_paths):
+            # Read image
+            image = cv2.imread(str(image_path), 0) / 255.0
+            data = torch.from_numpy(image).unsqueeze(0).unsqueeze(0).to(device).float()
 
-            # Load and preprocess the image
-            img = cv2.imread(image, 0) / 255.0
-            data = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).to(device).float()
-            
-            # Encode only once 
-            mu, log_var, conv6, conv5 = hybrid.encode(data)
-            log_var_np = log_var.cpu().numpy()
-            logs.append((image_name, np.exp(log_var_np))) # store variance of latents
-            
-            # Generate n_samples using the same encoding but different random z values
-            for sample_id in range(n_samples):
-                # Sample a new z from the latent distribution
-                z = hybrid.sampling(mu, log_var)
-                
-                # Decode with the sampled z
-                output, _, _ = hybrid.decode(z, conv6, conv5)
-                
-                # Process and save the output
-                output_np = output.cpu().numpy().reshape(-1, 2) * 1024
-                output_np = output_np.round().astype('int')
-                
-                output_sample_path = image_path.replace('.txt', f'_{sample_id + 1}.txt')
-                np.savetxt(output_sample_path, output_np, fmt='%i', delimiter=' ')
-            
-    with open(f'{base_folder}/{output_file}', 'w') as f:
-        for image_name, var in logs:
-            var_str = " ".join(map(str, var.flatten()))
-            f.write(f"{image_name} {var_str}\n")
+            # Encode once
+            mu, log_var, conv6, conv5 = model.encode(data)
+            latent_var = np.exp(log_var.cpu().numpy())
+
+            # Determine relative path and create output folder
+            relative_path = image_path.relative_to(image_folder).parent
+            target_dir = output_folder / relative_path
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save latent var under corresponding folder
+            latents_per_folder[target_dir].append((image_path.name, latent_var.flatten()))
+
+            # Decode multiple samples
+            all_landmarks = []
+            for _ in range(n_samples):
+                z = model.sampling(mu, log_var)
+                output, _, _ = model.decode(z, conv6, conv5)
+                coords = output.cpu().numpy().reshape(-1, 2) * 1024  # scale back
+                all_landmarks.append(coords)
+
+            all_landmarks = np.stack(all_landmarks, axis=0)
+            means = np.mean(all_landmarks, axis=0)
+            stds = np.std(all_landmarks, axis=0)
+
+            # Save stats to CSV
+            output_csv_path = target_dir / (image_path.stem + ".csv")
+            with open(output_csv_path, "w") as f:
+                f.write("Node,Mean x,Mean y,Std x,Std y\n")
+                for i, (m, s) in enumerate(zip(means, stds)):
+                    f.write(f"{i},{m[0]},{m[1]},{s[0]},{s[1]}\n")
+
+    # After loop: write one latents.txt per folder
+    for folder, latents in latents_per_folder.items():
+        latents_path = folder / "latents.txt"
+        with open(latents_path, "w") as f:
+            for name, var in latents:
+                var_str = " ".join(map(str, var))
+                f.write(f"{name} {var_str}\n")
+
+    print(f"All results saved under: {output_folder}")
+
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run inference for images.')
-    parser.add_argument('--n_samples', type=int, default=50, help='Number of samples to generate for each image.')
-    parser.add_argument('--folder_name', type=str, default=None, help='Folder name for input/output/mask subdirectories (optional).')
-    parser.add_argument('--base_folder', type=str, default='', help='Base folder for input/output/mask subdirectories.')
-    parser.add_argument('--output_file', type=str, default='output_sigma.txt', help='Output file for sigma values.')
-    parser.add_argument('--skip_connections', action='store_true', default=False, help='Use skip connections in the model.')    
-    
+    parser = argparse.ArgumentParser(description="Sample multiple predictions from a trained model.")
+    parser.add_argument("--n_samples", type=int, default=50, help="Number of samples per image.")
+    parser.add_argument("--image_folder", type=str, default="", help="Subfolder inside base_folder for images (optional).")
+    parser.add_argument("--weights_path", type=str, required=True, help="Path to model weights (.pt file).")
+    parser.add_argument("--skip_connections", action="store_true", help="Use skip connections in the model.")
+
     args = parser.parse_args()
 
     torch.manual_seed(42)
     np.random.seed(42)
-    main(args.n_samples, args.output_file, args.base_folder, args.folder_name, args.skip_connections)
+
+    base_folder = "Outputs"
+    subfolder = "Skip" if args.skip_connections else "NoSkip"
+
+    image_folder = os.path.join(base_folder, "Images", args.image_folder)
+    output_folder = os.path.join(base_folder, "Predictions", subfolder, args.image_folder)
+    
+    #image_folder = "../X-Ray/BigScale/Datasets/VinBigData/pngs/train/"
+    #output_folder = os.path.join(base_folder, "Predictions", subfolder, "VinDr/train")\
+
+    #folder = "../X-Ray/BigScale/Datasets/Chest8/ChestX-ray8/"
+    #for f in os.listdir(folder):
+    #    # check if it is a subfolder
+    #    if os.path.isdir(os.path.join(folder, f)):
+    #        image_folder = os.path.join(folder, f)
+    #        output_folder = os.path.join(base_folder, "Predictions", subfolder, "ChestX-ray8", f)
+    #        main(args.n_samples, image_folder, output_folder, args.weights_path, args.skip_connections)
+
+    #python HybridGNet/inferenceWithSampling.py --weights "Weights/e1000_skip/bestMSE.pt"
+    main(args.n_samples, image_folder, output_folder, args.weights_path, args.skip_connections)
